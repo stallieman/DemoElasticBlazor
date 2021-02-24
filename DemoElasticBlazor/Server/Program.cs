@@ -1,26 +1,54 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
+using Serilog.Sinks.Elasticsearch;
 
 namespace DemoElasticBlazor.Server
 {
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-            CreateHostBuilder(args).Build().Run();
-        }
+   public class Program
+   {
+      public static IConfiguration configuration { get; } = new ConfigurationBuilder()
+         .SetBasePath(Directory.GetCurrentDirectory())
+         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+         .AddEnvironmentVariables()
+         .Build();
 
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureWebHostDefaults(webBuilder =>
-                {
-                    webBuilder.UseStartup<Startup>();
-                });
-    }
+      public static void Main(string[] args)
+      {
+         var elasticsearchUrl = configuration["Elastic"];
+         Serilog.Log.Logger = new LoggerConfiguration()
+            .Enrich.FromLogContext()
+            .MinimumLevel.Debug()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Debug)
+            .MinimumLevel.Override("System", LogEventLevel.Debug)
+            .WriteTo.Debug()
+            .WriteTo.Console()
+            .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri(elasticsearchUrl))
+            {
+               AutoRegisterTemplate = true,
+               AutoRegisterTemplateVersion = AutoRegisterTemplateVersion.ESv7,
+               IndexFormat = $"serverlog--{DateTime.Now:dd.MM.dd}"
+            })
+            .CreateLogger();
+
+         CreateHostBuilder(args).Build().Run();
+      }
+
+      public static IHostBuilder CreateHostBuilder(string[] args) =>
+          Host.CreateDefaultBuilder(args)
+              .ConfigureWebHostDefaults(webBuilder =>
+              {
+                 webBuilder
+                 .UseSerilog()
+                 .UseStartup<Startup>();
+              });
+   }
 }
